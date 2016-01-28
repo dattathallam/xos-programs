@@ -1,0 +1,183 @@
+					//declaration
+alias physicalSP S0;
+alias sysCallNo S1;
+alias filename S2;
+alias start S3;
+alias end S4;
+alias flag S5;
+alias basic_block S6;
+alias fat_index S7;
+
+physicalSP = ([PTBR + 2 * (SP / 512) ] * 512 ) + (SP % 512);
+
+sysCallNo = [ physicalSP - 1];
+
+filename = [ physicalSP - 3] ;
+
+
+
+if(sysCallNo == 1) then            //system call for Create starts
+	print "entered 1 syscall";
+//	print "filename";
+//	print filename;
+//	print "------";
+
+					//initialisation
+	flag = 0;
+	end = 3072;
+	start = FAT;
+	fat_index = -1;
+	
+	while (start < end) do            //flie Allocation Table
+		if ([start] == filename) then
+			[physicalSP - 2] = 0;   //indicating file already present
+			print "already present";
+			ireturn;
+		endif;
+		start = start + 8;
+	endwhile;
+	
+	end = 3072;
+	start = FAT;
+
+	while( start < end ) do
+		if ([start] == -1) then       
+			fat_index = (start - FAT)/8;  //indicating free slot in FAT table
+//			print "fat_freeIndex";
+//			print "-----------";
+//			print (start-FAT)/8;
+			break;
+		endif;
+		start = start + 8;
+	endwhile;
+	
+	if (fat_index == -1) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+	
+	flag = 0;
+	start = 3072 + 24;
+	end = 3072 + 448;
+	while (start < end) do       //disk free list
+		if ([start] == 0) then
+			flag = 1;            //indicating free space in disk free list
+			basic_block = start - 3072;
+//			print "basicblock";
+//			print start-3072;
+			break;
+		endif;
+		start = start + 1;
+	endwhile;
+
+	if (flag == 0) then           //indicating no free space in disk free list
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+	
+	[FAT + (fat_index * 8)] = filename;
+	[FAT + (fat_index * 8) + 1] = 0;
+	[FAT + (fat_index * 8) + 2 ] = basic_block;
+	[3072 + basic_block] = 1;   // disk free list
+	load(1,basic_block);       //loading to the scratchpad
+	
+	start = 512;                //setting everything in the basic block to -1 indicating no data
+	end =512+257;
+	while(start < end) do
+		[start] = -1;
+		start = start + 1;
+	endwhile;
+	
+	store(1,basic_block);       //updated basic block is stored
+	store(6,20);                //updated diskfree list is stored
+	store(5,19);                //updated FAT table is stored
+
+	[physicalSP - 2] = 0;       //return 0 -- success
+	print "CREATED";
+	ireturn;
+endif;
+
+if(sysCallNo == 4) then        //DELETE
+
+//	print filename;
+//	print "------";
+	print "entered 4";
+	alias fatIndex S7;
+	alias iter S8;
+	flag = 0;
+	end = 3072;
+	start = FAT;
+	fat_index = -1;
+	while (start < end) do            //flie Allocation Table
+		if ([start] == filename) then
+			fatIndex = start;
+//			print "fatIndex";
+//			print (fatIndex - FAT)/8;
+			flag = 1;
+			break;
+		endif;
+		start = start + 8;
+	endwhile;
+
+	fatIndex = (fatIndex - FAT)/8;
+
+	if(flag == 0 ) then           //if no such file found
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+	start = 0;
+	while( start < 128 ) do                   //incase the file is opened
+		if([ FILE_TABLE + start + 0 ] == fatIndex) then
+			[physicalSP - 2] = -1;
+			print"OPENED FILE";
+			ireturn;
+		endif;
+		start = start + 2;
+	endwhile;
+	
+//	print "fatIndex";
+//	print fatIndex ;
+//	print "basic_block";
+//	print [ FAT + (8 * fatIndex) + 2];
+	basic_block = [ FAT + (8 * fatIndex) + 2];
+	start = 511;
+	end = 512+256;
+	while (start < end) do
+		start = start + 1;
+		load(1,basic_block);
+		iter = [start];
+		store(1,basic_block);
+		if(iter == -1 ) then
+			continue;
+		endif;
+		load(1,iter);
+		flag = 512;
+		while(flag < 1024) do
+			[flag] ="";
+			flag = flag + 1;
+		endwhile;
+		store(1,iter);
+		[3072 + iter ] = 0;        //updating disk free list
+	endwhile;
+	
+	load(1,basic_block);
+	start = 512;
+	end = 512+256;
+	while (start < end) do
+		[start] ="";
+		start = start + 1;
+	endwhile;
+	store(1,basic_block);
+	[3072 + basic_block] = 0;
+//	print "fatIndex";
+//	print fatIndex ;
+	[ FAT + (8 * fatIndex)] = -1;
+	[ FAT + (8 * fatIndex) + 1] = 0;
+	[ FAT + (8 * fatIndex) + 2] = -1;
+
+	store(5,19);
+	store(6,20);
+	print"DEL SUCCESS";
+ 	[physicalSP - 2] = 0;       //return 0 -- success
+	ireturn;
+endif;

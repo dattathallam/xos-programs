@@ -1,0 +1,90 @@
+//initialisation
+alias physicalSP S0;
+alias sysCallNo S1;
+alias fileDescriptor S2;
+alias start S3;
+alias fatIndex S4;
+alias flag S5;
+alias swoft S6;
+alias wordToWrite S7;
+alias lseek S8;
+alias block S9;
+alias currentPCB S10;
+physicalSP = ([PTBR + 2 * (SP / 512) ] * 512 ) + (SP % 512);
+
+sysCallNo = [ physicalSP - 1];
+
+if(sysCallNo == 5) then            //system call for write starts
+	alias basicblock S1;
+	print "entered 5";
+
+	fileDescriptor = [physicalSP - 4];
+	wordToWrite = [physicalSP - 3];
+
+	if(fileDescriptor < 0 || fileDescriptor > 7) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+
+	fileDescriptor = fileDescriptor * 2;
+
+	currentPCB = READY_LIST + 32 * ((PTBR - 1024) / 8);
+	
+	swoft =  [ currentPCB + 15 + fileDescriptor ] ;
+
+	if(swoft == -1) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+
+	lseek = [ currentPCB + 15 + fileDescriptor + 1];
+
+//	print "lseek before";
+//	print lseek;
+
+	swoft = swoft * 2;
+	fatIndex = [FILE_TABLE + swoft];
+	fatIndex = fatIndex * 8;
+	basicblock = [FAT + fatIndex + 2];
+
+//	print "basicblock";
+//	print basicblock;
+
+	load(1,basicblock);
+	flag = lseek / 512;
+	block = [512 + flag];
+
+	if([512 + flag] == -1) then
+//		print "new needed";
+		start = 3095;
+		while( start < 3520) do      //check in disk free list
+			if([start] == 0) then
+				[start] = 1;
+				break;
+			endif;	
+			start = start + 1;
+		endwhile;
+		if(start == 3520) then
+			[physicalSP - 2] = -1;
+			ireturn;
+		endif;
+		[512 + flag] = start - 3072;
+		store(1,basicblock);
+		[FAT + fatIndex + 1] = [FAT + fatIndex + 1] + 512;
+		store(5,19);			   //FAT entry
+		store(6,20);            //Disk Free List
+	endif;
+	block = [512 + flag];
+//	print "block";
+//	print block;
+	load(1,block);
+	flag = 512 + (lseek % 512);
+	[flag] = wordToWrite;
+	store(1,block);
+	[ currentPCB + 15 + fileDescriptor + 1] = [ currentPCB + 15 + fileDescriptor + 1] + 1;
+	lseek = [ currentPCB + 15 + fileDescriptor + 1];
+//	print "lseek after";
+//	print lseek;
+	[physicalSP - 2] = 0;
+	ireturn;
+endif;

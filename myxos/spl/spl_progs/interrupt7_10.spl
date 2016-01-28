@@ -1,0 +1,165 @@
+alias sysCallNo S0;
+alias physicalSP S1;
+alias counter S3;
+alias newPCB S4;
+alias currentPID S5;
+alias currentPCB S6;
+alias iter S7;
+alias swoft S8;
+alias waitingPID S9;
+alias page S10;
+
+currentPID = (PTBR - 1024) / 8;
+
+currentPCB = READY_LIST + 32 * currentPID;
+
+physicalSP = ([PTBR + 2 * (SP / 512) ] * 512 ) + (SP % 512);
+
+sysCallNo = [ physicalSP - 1];
+//print("in Exit");
+if(sysCallNo == 14) then          //start Signal call
+//	print "Signal entered";
+	counter = READY_LIST;
+	while(counter < 2560) do
+		if([counter + 1] == 100+currentPID) then
+			[counter + 1] = 1;
+		endif;
+	counter = counter + 32;
+	endwhile;
+	[physicalSP - 2] = 0;
+//	print "Signal exited";
+	ireturn;
+endif;
+if(sysCallNo == 10) then          //starts Exit call
+//	print "Exit entered";
+
+	counter = READY_LIST;
+	while(counter < 2560) do
+		if(counter != currentPCB) then
+			if([counter + 1] == 100 + currentPID) then
+				[counter + 1] = 1; 
+			endif;
+		endif;
+	counter = counter + 32;
+	endwhile;
+
+	counter = READY_LIST;
+	while(counter < 2560) do
+		if(counter != currentPCB) then
+			if([counter + 1] == 1) then
+				newPCB = counter;
+				break;
+			endif;
+		endif;
+	counter = counter + 32;
+	endwhile;
+	
+	iter = 0;
+	while(iter < 8) do
+		page = [PTBR + iter];
+		if(page != -1) then
+			if(page > 447) then
+				[3072 + page] = [3072 + page] - 1;
+				store(6,20);
+			endif;
+			[1280 + page] = [1280 + page] - 1;
+		endif;
+		[PTBR + iter + 1] = "00";
+		iter = iter + 2;
+	endwhile;
+
+
+	if(counter == 2560) then
+//		print("halted");
+		halt;
+	endif;
+
+	iter = 0;
+	while(iter < 8) do
+		swoft = [READY_LIST + currentPID*32 + iter + 15];
+		if(swoft != -1) then
+			[FILE_TABLE + swoft*2 + 1 ] = [FILE_TABLE + swoft*2 + 1 ] - 1;
+			if([FILE_TABLE + swoft*2 + 1 ] == 0) then
+				[FILE_TABLE + swoft*2 ] = -1;
+			endif; 
+			[READY_LIST + currentPID*32 + iter + 15] = -1;
+			[READY_LIST + currentPID*32 + iter + 16] = -1;
+		endif;
+		iter = iter + 2;
+	endwhile;
+	[currentPCB + 1] = 0;
+
+endif;
+
+if(sysCallNo == 13) then  //starts Wait call
+//	print "Wait entered";
+	waitingPID = [physicalSP - 3];
+//	print "waitingPID";
+//	print (waitingPID);
+	newPCB = READY_LIST + waitingPID*32;
+    if(waitingPID < 0 || waitingPID > 31) then
+      [physicalSP-2] = -1;
+      ireturn;
+    endif;
+	if([newPCB + 1] == 0 || [newPCB + 1] == 2) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+
+	[ currentPCB + 1 ]= waitingPID + 100;	//Change the state to wait
+	[ currentPCB + 2 ] = BP;		// Save BP
+	[ currentPCB + 3 ] = SP - 1; 	// Save SP. -1 coz interrupt pushed the IP in Stack
+	[ currentPCB + 4 ] = [ physicalSP ]; // Save IP of current process in the PCB from the stack
+	[ currentPCB + 5 ] = PTBR;		// Save PTBR
+	[ currentPCB + 6 ] = PTLR;		// Save PTLR
+	[ currentPCB + 7 ] = R0;		//
+	[ currentPCB + 8 ] = R1;		//
+	[ currentPCB + 9 ] = R2;		//	Save the Registers
+	[ currentPCB + 10 ] = R3;		//
+	[ currentPCB + 11 ] = R4;		//
+	[ currentPCB + 12 ] = R5;		//
+	[ currentPCB + 13 ] = R6;		//
+	[ currentPCB + 14 ] = R7;
+
+endif;
+
+//	print("Shared");
+	newPCB = currentPCB + 32;
+	while 1 do
+		if newPCB == 2560 then
+			newPCB = 1536;
+		endif;
+		if [ newPCB + 1 ] == 1 then
+			//print (newPCB- READY_LIST)/32;
+			break;
+		else
+			newPCB = newPCB + 32;
+		endif;
+	endwhile;
+
+	BP = [ newPCB + 2 ] ;
+	SP = [ newPCB + 3 ] ;
+	PTBR = [ newPCB + 5 ];
+	PTLR = [ newPCB + 6 ];
+	R0 = [ newPCB + 7 ];
+	R1 = [ newPCB + 8 ];
+	R2 = [ newPCB + 9 ];
+	R3 = [ newPCB + 10 ];
+	R4 = [ newPCB + 11 ];
+	R5 = [ newPCB + 12 ];
+	R6 = [ newPCB + 13 ];
+	R7 = [ newPCB + 14 ];
+	SP = SP + 1;
+	alias newphysicalSP S5;
+	newphysicalSP = ([PTBR + 2 * (SP / 512 )] * 512 ) + (SP % 512);
+	[newphysicalSP ] = [ newPCB + 4];
+	[newPCB + 1] = 2;
+if(sysCallNo == 10) then
+//	print "Exit exited";
+	ireturn;
+endif;
+if(sysCallNo == 13) then
+//	print("Wait Exited");
+	[physicalSP -2] = 0;
+	ireturn;
+endif;

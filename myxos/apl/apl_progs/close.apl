@@ -1,0 +1,18 @@
+decl
+	integer status;
+	integer filedescriptor;
+enddecl
+integer main()
+{
+	print("check");
+	status = Create("myfile.dat");
+	print("check1");
+	filedescriptor = Open("myfile.dat");
+	print(status);
+	print(filedescriptor);
+	status = Close(filedescriptor);
+	print(status);
+	//status = Delete("file.dat");
+	//print(status);
+	return 0;
+}

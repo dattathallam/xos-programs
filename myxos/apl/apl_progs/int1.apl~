@@ -1,0 +1,6 @@
+integer main(){
+print ("Before INT 1");
+INT 1
+print("After INT 1");
+return 0;
+}

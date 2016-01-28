@@ -1,0 +1,104 @@
+//initialisation
+alias physicalSP S0;
+alias sysCallNo S1;
+alias fileDescriptor S2;
+alias start S3;
+alias fatIndex S4;
+alias flag S5;
+alias swoft S6;
+alias newlseek S7;
+alias lseek S8;
+alias filesize S9;
+alias block S10;
+alias currentPCB S11;
+physicalSP = ([PTBR + 2 * (SP / 512) ] * 512 ) + (SP % 512);
+
+sysCallNo = [ physicalSP - 1];
+
+if(sysCallNo == 6) then            //system call for lseek starts
+	alias basicblock S1;
+	print "entered 6";
+
+	fileDescriptor = [physicalSP - 4];
+	newlseek = [physicalSP - 3];
+	if(fileDescriptor < 0 || fileDescriptor > 7) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+
+	fileDescriptor = fileDescriptor * 2;
+	currentPCB = READY_LIST + 32 * ((PTBR - 1024) / 8);
+
+	swoft =  [ currentPCB + 15 + fileDescriptor ] ;
+	if(swoft == -1) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+	lseek = [ currentPCB + 15 + fileDescriptor + 1];
+//	print "lseek before";
+//	print lseek;
+	swoft = swoft * 2;
+	fatIndex = [FILE_TABLE + swoft];
+	fatIndex = fatIndex * 8;
+	filesize = [FAT + fatIndex + 1];
+//	print "filesize";
+//	print filesize;
+	if(newlseek < 0 || newlseek > filesize) then   //check for lseek
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+	[ currentPCB + 15 + fileDescriptor + 1] = newlseek;
+	[physicalSP - 2] = 0;
+//	print "lseek after";
+	lseek = [ currentPCB + 15 + fileDescriptor + 1];
+//	print lseek;
+	ireturn;
+endif;
+
+if(sysCallNo == 7) then          //system call for read starts
+	alias basicblock S1;
+	print "entered 7";
+	fileDescriptor = [physicalSP - 4];
+	if(fileDescriptor < 0 || fileDescriptor > 7) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+	fileDescriptor = fileDescriptor * 2;
+	currentPCB = READY_LIST + 32 * ((PTBR - 1024) / 8);
+
+	swoft =  [ currentPCB + 15 + fileDescriptor ] ;
+	if(swoft == -1) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+	lseek = [ currentPCB + 15 + fileDescriptor + 1];
+//	print "lseek before";
+//	print lseek;
+	swoft = swoft * 2;
+	fatIndex = [FILE_TABLE + swoft];
+	fatIndex = fatIndex * 8;
+	basicblock = [FAT + fatIndex + 2];
+//	print "basicblock";
+//	print basicblock;
+	load(1,basicblock);
+	filesize = [FAT + fatIndex + 1];
+//	print "filesize";
+//	print filesize;
+	if(filesize == lseek) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+	flag = lseek / 512;
+	block = [512 + flag];
+	store(1,basicblock);
+	load(1,block);
+	flag = lseek % 512;
+	[physicalSP - 3] = [512 + flag];
+	[ currentPCB + 15 + fileDescriptor + 1] = [ currentPCB + 15 + fileDescriptor + 1] + 1;
+	lseek = [ currentPCB + 15 + fileDescriptor + 1];
+//	print "lseek after";
+//	print lseek;
+	store(1,block);
+	[physicalSP - 2 ] = 0;
+	ireturn;
+endif;

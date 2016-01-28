@@ -1,0 +1,139 @@
+					//declaration
+alias physicalSP S0;
+alias sysCallNo S1;
+alias filename S2;
+alias start S3;
+alias fatIndex S4;
+alias flag S5;
+alias swoft S6;
+alias currentPCB S8;
+
+physicalSP = ([PTBR + 2 * (SP / 512) ] * 512 ) + (SP % 512);
+
+sysCallNo = [ physicalSP - 1];
+
+if(sysCallNo == 2) then            //system call for open starts
+	filename = [ physicalSP - 3] ;
+//	print filename;
+//	print "------";
+	print "entered 2";
+	
+	flag = 0;
+	start = FAT;
+	
+	while (start < 3072) do            //flie Allocation Table
+		if ([start] == filename) then
+			fatIndex = (start - FAT)/8;   //indicating file present
+//			print "PRESENT";
+			flag = 1;
+			break;			
+		endif;
+		start = start + 8;
+	endwhile;
+	
+	if(flag == 0 ) then              //indicating file not present
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+
+	//-----------------------------------------------------------------------
+	
+	start = FILE_TABLE;             //checking whether file already opened or not
+	flag = 0;
+	
+	while( flag < 128 ) do
+		if([ FILE_TABLE + flag + 0 ] == fatIndex) then
+			[ FILE_TABLE + flag + 1 ] = [ FILE_TABLE + flag + 1 ] + 1; //updating file open count
+//			print "SWOFT";
+//			print flag;
+//			print "FILECOUNT UPDATED";
+			swoft = flag/2;
+			break;
+		endif;
+		flag = flag + 2;
+	endwhile;
+
+	//--------------------------------------------------------------------
+	if(flag == 128) then           //if not already opened
+		flag = 0;
+		while( flag < 128 ) do
+			if([ FILE_TABLE + flag + 0 ] == -1) then
+				swoft = flag/2;
+				[ FILE_TABLE + flag + 0 ] = fatIndex;
+//				print "SWOFT";
+//				print swoft;
+//				print "fatIndex";
+//				print [ FILE_TABLE + flag + 0 ];
+				[ FILE_TABLE + flag + 1 ] = 1;
+				break;
+			endif;
+			flag = flag + 2;
+		endwhile;
+	endif;
+	
+	if(flag == 128 ) then          //failed to find space in SWOFT
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+
+	//----------------------------------------------------------------------
+	currentPCB = READY_LIST + 32 * ((PTBR - 1024) / 8);
+
+	flag = 0;                      //per process open file table entry
+	while (flag < 16 ) do
+		if([ currentPCB + 15 + flag ] == -1 ) then
+			[ currentPCB + 15 + flag ] = swoft;
+//			print "PERPROCESS LIST";
+//			print flag;
+			[ currentPCB + 16 + flag ] = 0;
+			[physicalSP - 2] = flag/2	;
+			break;
+		endif;
+		flag = flag + 2;
+	endwhile;
+	
+	if(flag == 16) then          //failed to find space in per process open file table
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;	
+//	print "open success";
+	ireturn;
+endif;
+
+if(sysCallNo == 3) then
+	
+	print "entered 3";
+	alias filedescriptor S2;
+	alias swoftIndex S7;
+	filedescriptor = [physicalSP - 3];
+//	print "filedescriptor";
+//	print filedescriptor;
+	if(filedescriptor > 7 || filedescriptor < 0) then //checking filedescriptor validity
+		 [physicalSP - 2] = -1;
+		 ireturn;
+	endif;
+	filedescriptor = filedescriptor * 2;
+
+	currentPCB = READY_LIST + 32 * ((PTBR - 1024) / 8);
+
+	if([ currentPCB + 15 + filedescriptor ] == -1 ) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+	swoft = [ currentPCB + 15 + filedescriptor];
+//	print "SWOFT index";
+//	print [ READY_LIST + 15 + filedescriptor ];
+	swoft = swoft*2;
+//	print "swoftIndex";
+	swoftIndex =  FILE_TABLE + swoft ;
+//	print [swoftIndex];
+	[swoftIndex + 1 ] = [swoftIndex + 1 ] - 1;
+	if([swoftIndex + 1 ] == 0) then
+		[swoftIndex ] = -1;
+	endif;
+	[ currentPCB + 15 + filedescriptor ] = -1;
+	[ currentPCB + 16 + filedescriptor ] = -1;
+	[physicalSP - 2] = 0;
+//	print "CLOSE SUCCESS";
+	ireturn;
+endif;

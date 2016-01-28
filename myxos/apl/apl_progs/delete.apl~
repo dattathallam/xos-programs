@@ -1,0 +1,13 @@
+decl
+	integer status;
+	integer filedescriptor1;
+	integer filedescriptor2;
+enddecl
+integer main()
+{
+	status = Create("myfile.dat");
+	print(status);
+	status = Delete("myfile.dat");
+	print(status);
+	return 0;
+}

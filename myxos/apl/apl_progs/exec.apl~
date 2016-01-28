@@ -1,0 +1,7 @@
+integer main()
+{
+	integer pid;
+	pid = Exec("even.xsm");
+	print(pid);
+	return 0;
+}

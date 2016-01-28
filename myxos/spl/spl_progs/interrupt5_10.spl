@@ -1,0 +1,192 @@
+alias sysCallNo S0;
+alias physicalSP S1;
+alias ctr S2;
+alias chPID S3;
+alias iter S4;
+alias pNum S5;
+alias page1 S6;
+alias page2 S7;
+alias page3 S8;
+alias currPID S9;
+alias swoft S10;
+alias chPCB S11;
+alias parPCB S12;
+alias count S13;
+
+physicalSP = ([PTBR + 2 * (SP / 512) ] * 512 ) + (SP % 512);
+
+sysCallNo = [ physicalSP - 1];
+
+currPID = (PTBR - 1024)/8;
+print("In fork");
+if(sysCallNo == 8 ) then         //system call for fork starts
+//	print "sys 8 entered";
+	alias page4 S0;
+	
+	ctr = READY_LIST;
+	while(ctr < 2560) do
+		//print((ctr - READY_LIST)/32);
+		if([ctr + 1] == 0) then
+			chPID = (ctr - READY_LIST)/32;
+			break;
+		endif;
+		ctr = ctr + 32;
+	endwhile;
+
+	if(ctr == 2560) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+	//print(chPID);
+	[READY_LIST + 32*chPID] = chPID;
+
+	ctr = 1280 + 26;
+	while(ctr < 1344) do
+		if([ctr] == 0) then
+			print("fork");
+			page1 = ctr - 1280;
+			break;
+		endif;
+		ctr = ctr + 1;
+	endwhile;
+
+alias counter S15;
+alias indicator S14;
+alias start S0;
+alias freepage S8;
+// else part
+counter = ctr;
+if(counter == 1344) then
+	start = PTBR ;
+	indicator = 0;
+	while 1 do
+		if(start == 1280) then
+			start = 1024;
+			indicator = 0;
+		endif;
+		if(indicator == 3) then
+			start = start + 2;
+			indicator = 0;
+			continue;
+		endif;
+		if([start + 1] == "01" || [start + 1] == "11") then
+			if([MEM_LIST + [start]] > 1) then
+				start = start + 2;
+				indicator = indicator + 1;
+				continue;
+			endif;
+			if([start + 1] == "11") then
+				[start + 1] = "01";
+				start = start + 2;
+				indicator = indicator + 1;
+				continue;
+			endif;
+			freepage = [start]; //VICTIM PAGE
+//			print(freepage);
+			iter = DISK_LIST + 448;
+			while(iter < 3584) do
+				if([iter] == 0) then
+					[iter] = 1;
+					store(freepage,iter - DISK_LIST);
+					[start] = iter - DISK_LIST;
+					[start + 1] = "00";
+					store(6,20);
+					page1 = freepage;
+					break;
+				endif;
+			iter = iter + 1;
+			endwhile;
+			if(iter == 3584) then
+				physicalSP = ([PTBR + 2 * (SP / 512) ] * 512 ) + (SP % 512);
+				[ physicalSP - 1] = 10;
+				inline "JMP 11776";
+			else
+				break;
+			endif;
+		endif;
+		indicator = indicator + 1;
+		start = start + 2;
+	endwhile;
+endif;
+// else part 
+///////////////////////////////////////////////////////////////////////////
+
+	[1280 + page1] = 1;
+
+	pNum = 1024 + chPID*8;                           //child process PTBR address
+
+	if([PTBR + 7] == "01" || [PTBR + 7] == "11") then
+		[pNum + 6] = page1;
+		iter = 0;
+		while(iter < 512) do
+			[page1*512 + iter] = [[PTBR + 6]*512 + iter];
+			iter = iter + 1;
+		endwhile;
+		[pNum + 7] = "01";
+	endif;
+
+	iter = 0;
+	while(iter < 6) do
+		page2 = [PTBR + iter];
+		[pNum + iter] = page2;
+		[pNum + iter + 1] = [PTBR + iter + 1];
+		if([PTBR + iter + 1] == "01" || [PTBR + iter + 1] == "11") then
+			[1280 + page2] = [1280 + page2] + 1;
+		endif;
+		if([PTBR + iter + 1] == "00" || [PTBR + iter + 1] == "10") then
+			if([pNum + iter] > 447) then
+				[3072 + page2] = [3072 + page2] + 1;
+				store(6,20);
+			endif; 
+		endif;
+		iter = iter + 2;
+	endwhile;
+///////////////////////////////////////////////////////////////////////////
+	breakpoint;
+	chPCB = chPID*32 + READY_LIST;
+	parPCB = currPID*32 + READY_LIST;
+	[chPCB + 2] = BP;
+	[chPCB + 3] = SP -1;
+	[chPCB + 4] = [physicalSP];
+	[chPCB + 5] = 1024 + chPID*8;     //setting PTBR In PCB of child process
+	[chPCB + 6] = 4; 
+	[chPCB + 7] = R0;
+	[chPCB + 8] = R1;
+	[chPCB + 9] = R2;
+	[chPCB + 10] = R3;
+	[chPCB + 11] = R4;
+	[chPCB + 12] = R5;
+	[chPCB + 13] = R6;
+	[chPCB + 14] = R7;
+	[chPCB + 31] = currPID;
+	ctr = 15;
+
+	while(ctr < 31) do
+		[chPCB + ctr] = [parPCB + ctr];
+		swoft = [chPCB + ctr]; 
+		if( swoft  != -1) then
+			[swoft*2 + FILE_TABLE + 1] = [swoft*2 + FILE_TABLE + 1] + 1;
+		endif;
+		ctr = ctr + 1;
+		[chPCB + ctr] = [parPCB + ctr];
+		ctr = ctr + 1;
+	endwhile;
+
+	[chPCB + 1] = 1;
+	[physicalSP - 2] = chPID;
+
+	alias childPTBR S5;
+	alias childSP S6;
+	childPTBR = [chPCB + 5];
+	childSP = SP -1 ;
+	physicalSP = ([childPTBR + 2 * (childSP / 512) ] * 512 ) + (childSP % 512);
+	[physicalSP - 1] = -2;
+//	print "sys 8 exited";
+//	breakpoint;
+	ireturn;
+endif;
+// PCB
+//===========================================================================
+//| 0	| 1	    | 2		|3	 |4	   |5	  |6	  |7-14	  |15-30    | 31	|
+//| PID | State | BP	|SP	 |IP   |PTBR  |PTLR	  |R0-R7  |PPOFT	| Free	|
+//===========================================================================

@@ -1,0 +1,110 @@
+alias sysCallNo S0;
+alias physicalSP S1;
+alias filename S2;
+alias counter S3;
+alias fatIndex S4;
+alias blocks S5;
+alias iter S6;
+alias page1 S7;
+alias page2 S8;
+alias page3 S9;
+alias ctr S10;
+alias currentPID S11;
+alias swoft S12;
+alias parentPID S13;
+
+physicalSP = ([PTBR + 2 * (SP / 512) ] * 512 ) + (SP % 512);
+
+sysCallNo = [ physicalSP - 1];
+
+currentPID = (PTBR - 1024)/8;
+//print("in Exec");
+filename = [physicalSP - 3];
+
+if(sysCallNo == 9 ) then         //system call for exec starts
+	counter = FAT;
+	while(counter < 3072) do
+		if([counter] == filename) then
+			fatIndex = (counter - FAT)/8;
+			break;
+		endif;
+		counter = counter + 8;
+	endwhile;
+	if(counter == 3072) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+	
+
+	iter = 0;
+	while(iter < 6) do
+		page1 = [PTBR + iter];
+		if([PTBR + iter + 1] == "01" || [PTBR + iter + 1] == "11") then
+			[1280 + page1] = [1280 + page1] - 1;
+		endif;
+		if([PTBR + iter + 1] == "00" || [PTBR + iter + 1] == "10") then
+			if(page1 > 447) then
+				[3072 + page1] = [3072 + page1] - 1;
+				store(6,20);
+			endif;
+		endif;
+		iter = iter + 2;
+	endwhile;
+
+////////////////////////////////////////////////////////////////////////////////////	
+
+	load(1,[fatIndex*8 + FAT + 2]);
+	counter = 512;
+	blocks = 0;
+	while(counter < 512 + 3) do
+		if([counter] != -1) then
+			[PTBR + blocks] = [counter];
+			blocks = blocks + 1;
+			[PTBR + blocks ] = "00";
+			blocks = blocks + 1;
+		endif;
+		counter = counter + 1;
+	endwhile;
+	blocks = 6 - blocks;
+	counter = 5;
+	while(blocks > 0 ) do
+		[PTBR + counter] = "00";
+		counter = counter - 1;
+		[PTBR + counter] = -1;
+		counter = counter - 1;
+
+		blocks = blocks - 2;
+	endwhile;
+
+	[PTBR + 7] = "01";
+
+   ////////////////////////////////////////////////////////////////////////////////////	
+
+	currentPID = (PTBR - 1024)/8;
+	iter = 0;
+	while(iter < 8) do
+		swoft = [READY_LIST + currentPID*32 + iter + 15];
+		if(swoft != -1) then
+			[FILE_TABLE + swoft*2 + 1 ] = [FILE_TABLE + swoft*2 + 1 ] - 1;
+			if([FILE_TABLE + swoft*2 + 1 ] == 0) then
+				[FILE_TABLE + swoft*2 ] = -1;
+			endif; 
+			[READY_LIST + currentPID*32 + iter + 15] = -1;
+			[READY_LIST + currentPID*32 + iter + 16] = -1;
+		endif;
+		iter = iter + 2;
+	endwhile;
+	SP = 1536; //3*512
+	physicalSP = ([PTBR + 2 * (SP / 512) ] * 512 ) + (SP % 512);
+	[physicalSP ] = 0;
+	ireturn;
+endif;
+if(sysCallNo == 11) then       //system call for getPID starts
+	[physicalSP - 2] = currentPID;
+	ireturn;
+endif;
+if(sysCallNo == 12) then 	  //system call for getPPID starts
+	parentPID = [READY_LIST + currentPID*32 + 31];
+	[physicalSP - 2] = parentPID;
+	ireturn;
+endif;

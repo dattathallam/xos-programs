@@ -1,0 +1,118 @@
+breakpoint;
+//print "OS STARTS";
+
+SP = 3 * 512;         //set SP
+BP = 3 * 512;         //set BP
+PTBR = 1024;          //set PTBR
+PTLR = 4;             //set PTLR
+[READY_LIST + 0] = 0; //sets entry for pid as 0
+[READY_LIST + 1] = 2; // sets state to running
+[ READY_LIST + 2 ] = BP;
+[ READY_LIST + 3 ] = SP;
+[ READY_LIST + 4 ] = 0;
+[ READY_LIST + 5 ] = PTBR;
+[ READY_LIST + 6 ] = PTLR;
+[ READY_LIST + 7 ] = R0;
+[ READY_LIST + 8 ] = R1;
+[ READY_LIST + 9 ] = R2;
+[ READY_LIST + 10 ] = R3;
+[ READY_LIST + 11 ] = R4;
+[ READY_LIST + 12 ] = R5; 
+[ READY_LIST + 13 ] = R6;
+[ READY_LIST + 14 ] = R7;
+
+
+[PTBR + 0] = 21;      //per-process table
+[PTBR + 1] = "00";
+[PTBR + 2] = 22;
+[PTBR + 3] = "00";
+[PTBR + 4] = 23;
+[PTBR + 5] = "00";
+// allocating free page for stack
+[PTBR + 6] = 25;
+[PTBR + 7] = "01";
+[1280 + 25] = 1;
+[READY_LIST + 31] = 0; //sets parent pid as 0
+
+load(5,19);			   //FAT entry
+load(6,20);            //Disk Free List
+
+load(7,1);    		   //exception handler
+load(8,2);
+
+load(9,3);             //timer interrupt
+load(10,4);
+
+load(11,5);            //interrupt 1
+load(12,6);
+
+load(13,7);            //interrupt 2
+load(14,8);
+
+load(15,9);            //interrupt 3
+load(16,10);
+
+load(17,11);           //interrupt 4
+load(18,12);
+
+load(19,13);           //interrupt 5
+load(20,14);
+
+load(21,15);           //interrupt 6
+load(22,16);
+
+load(23,17);           //interrupt 7
+load(24,18);
+
+[28 * 512 ] = 0;       // setting top of stack to 0
+
+alias counter S0;      //system wide open file table setup
+counter = 0;
+while( counter < 128 ) do
+	[ FILE_TABLE + counter + 0 ] = -1;
+	[ FILE_TABLE + counter + 1 ] = 0;
+	counter = counter + 2;
+endwhile;
+
+counter = 0;            //setting up per process file table
+while (counter < 16 ) do
+	[ READY_LIST + 15 + counter ] = -1;
+	[ READY_LIST + 16 + counter ] = -1;
+	counter = counter + 2;
+endwhile;
+
+counter = 1280;         	//setting memory pages to 1 till 25
+while(counter <= 1280 + 25) do
+	[counter] = 1;
+	counter = counter + 1;
+endwhile;
+
+while (counter < 1344) do	//setting memory pages to 0 after 25
+	[counter] = 0;
+	counter = counter + 1;
+endwhile;
+
+counter = READY_LIST;       //intialize all PIDs to zero
+while(counter < 2560) do
+	[counter + 1] = 0;
+	counter = counter + 32;
+endwhile;
+
+counter = 3072+448;         //Initialize all swap blocks to free
+while(counter < 3584) do
+	[counter] = 0;
+	counter = counter + 1;
+endwhile;
+store(6,20);               //commit the disk free list
+//print "OS ENDS";
+[READY_LIST + 1] = 2; // sets state to running
+breakpoint;
+// Loading INIT Process Complete
+
+// Structure of PCB
+//	0	|	1	|	2	|	3	|	4	|	5	|	6	|	7-14	|	15-30	| 31|
+//------+-------+-------+-------+-------+-------+-------+-----------+-----------+---|
+// PID	| STATE	|	BP	|	SP	|	IP	| PTBR	| PTLR	|  R0 - R7	| File Tbl.	+ F |
+//------+-------+-------+-------+-------+-------+-------+-----------+-----------+---|
+
+ireturn;
